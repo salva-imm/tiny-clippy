@@ -1,0 +1,60 @@
+name: Release App
+
+on:
+  push:
+    tags:
+      - 'v*' # Triggers on tags like v0.1.0, v1.0.0
+
+jobs:
+  build-tauri:
+    permissions:
+      contents: write # Needed to upload the files to the Release
+    strategy:
+      fail-fast: false
+      matrix:
+        # These 3 runners cover all your targets
+        platform: [macos-latest, ubuntu-22.04, windows-latest]
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      # --- LINUX SPECIFIC SETUP ---
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        # Tauri v2 uses libwebkit2gtk-4.1 (v1 used 4.0)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      # --- TRUNK INSTALLATION (Required for Leptos) ---
+      - name: Install Trunk
+        uses: jetli/trunk-action@v0.4.0
+        with:
+          version: 'latest'
+
+      # --- WASM TARGET (Required for Leptos) ---
+      - name: Add WASM target
+        run: rustup target add wasm32-unknown-unknown
+
+      # --- BUILD & UPLOAD ---
+      - name: Build and Create Release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Clippy ${{ github.ref_name }}"
+          releaseBody: "New version of desktop clippy!"
+          releaseDraft: true
+          prerelease: false
