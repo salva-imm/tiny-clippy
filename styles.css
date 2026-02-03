@@ -1,19 +1,23 @@
+/* 1. GLOBAL RESET */
 html, body {
-  margin: 0; padding: 0;
-  width: 100%; height: 100%;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
+  /* Base transparent state */
   background-color: transparent;
 }
 
+/* 2. DRAG CONTAINER */
 .app-container {
-  width: 100vw; height: 100vh;
+  width: 100vw;
+  height: 100vh;
   display: flex;
   justify-content: center;
   align-items: center;
 
-  /* LINUX FIX:
-     Keep 1% opacity so the window manager knows
-     this window exists and can be dragged. */
+  /* LINUX: Start with 1% opacity so it is clickable */
   background-color: rgba(0, 0, 0, 0.01);
 
   cursor: grab;
