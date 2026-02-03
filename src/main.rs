@@ -35,8 +35,11 @@ struct ClippyApp {
 
 impl ClippyApp {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        let img_path = "clippy_map.png";
-        let dynamic_img = image::open(img_path).expect("Failed to open clippy_map.png");
+        let img_bytes = include_bytes!("../clippy_map.png");
+        let dynamic_img = image::load_from_memory(img_bytes)
+            .expect("Failed to load embedded clippy data");
+        // let img_path = "clippy_map.png";
+        // let dynamic_img = image::open(img_path).expect("Failed to open clippy_map.png");
         let img_buffer = dynamic_img.to_rgba8();
 
         let mut visuals = egui::Visuals::dark();
