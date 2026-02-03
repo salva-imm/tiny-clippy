@@ -54,7 +54,47 @@ jobs:
         run: cargo build --release --target ${{ matrix.target }}
 
       # 4. Rename & Move Binary
-      # Windows produces .exe, Linux/Mac do not. We handle both cases.
       - name: Prepare Artifact
         shell: bash
-        run:
+        run: |
+          mkdir -p artifacts
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            cp target/${{ matrix.target }}/release/tiny-clippy.exe artifacts/${{ matrix.artifact_name }}
+          else
+            cp target/${{ matrix.target }}/release/tiny-clippy artifacts/${{ matrix.artifact_name }}
+          fi
+
+      # 5. Upload Artifact (FORCE V4)
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: artifacts/${{ matrix.artifact_name }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Needed to create the release
+    steps:
+      # 1. Download All Artifacts (FORCE V4)
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      # 2. Debug: List files
+      - name: List Artifacts
+        run: ls -R artifacts
+
+      # 3. Create Release
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/tiny-clippy-linux/tiny-clippy-linux
+            artifacts/tiny-clippy-windows.exe/tiny-clippy-windows.exe
+            artifacts/tiny-clippy-mac-arm64/tiny-clippy-mac-arm64
+          draft: true
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
