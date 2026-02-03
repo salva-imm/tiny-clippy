@@ -56,7 +56,8 @@ pub fn App() -> impl IntoView {
                 // CRITICAL FIX FOR LINUX:
                 // Manually wipe the entire canvas area transparent.
                 // This deletes the "ghosts" from the previous frame.
-                ctx.clear_rect(0.0, 0.0, frame_w, frame_h);
+                // ctx.clear_rect(0.0, 0.0, frame_w, frame_h);
+                let _ = ctx.set_global_composite_operation("copy");
 
                 // Determine which sprite to show
                 let row = if is_animating.get() { current_row.get() } else { 0 };
@@ -70,6 +71,7 @@ pub fn App() -> impl IntoView {
                     frame_w, frame_h,          // Source W/H
                     0.0, 0.0, frame_w, frame_h // Dest X/Y/W/H
                 );
+                let _ = ctx.set_global_composite_operation("source-over");
 
                 // Advance Frame
                 if is_animating.get() {
