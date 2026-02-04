@@ -1,11 +1,18 @@
 use eframe::egui;
+use rand::Rng;
 use std::time::{Duration, Instant};
+
+// Constants
 const FRAME_W: u32 = 124;
 const FRAME_H: u32 = 93;
 const TOTAL_FRAMES: u32 = 27;
+const TOTAL_ROWS: u32 = 34;
+const FRAME_DURATION_MS: u64 = 75;
+const IDLE_CHECK_MS: u64 = 100;
+const MIN_DELAY_BETWEEN_ANIMATIONS_SECS: u64 = 10; // Static delay between animations
+const ANIMATION_TRIGGER_CHANCE: f32 = 1.0;
 
 fn main() -> eframe::Result {
-    // 1. SETUP WINDOW
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_decorations(false)
@@ -24,102 +31,218 @@ fn main() -> eframe::Result {
     )
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum AnimationState {
+    Idle,
+    Playing { row: u32 },
+    Cooldown,
+}
+
+struct Animation {
+    state: AnimationState,
+    current_frame: u32,
+    last_frame_time: Instant,
+    last_idle_check: Instant,
+    last_animation_end: Instant,
+}
+
+impl Animation {
+    fn new() -> Self {
+        Self {
+            state: AnimationState::Idle,
+            current_frame: 0,
+            last_frame_time: Instant::now(),
+            last_idle_check: Instant::now(),
+            last_animation_end: Instant::now(),
+        }
+    }
+
+    fn update(&mut self) -> (u32, u32) {
+        let now = Instant::now();
+
+        if now.duration_since(self.last_frame_time) >= Duration::from_millis(FRAME_DURATION_MS) {
+            self.advance_frame();
+            self.last_frame_time = now;
+        }
+
+        if matches!(self.state, AnimationState::Idle | AnimationState::Cooldown) {
+            if now.duration_since(self.last_idle_check) >= Duration::from_millis(IDLE_CHECK_MS) {
+                self.maybe_start_animation(now);
+                self.last_idle_check = now;
+            }
+        }
+
+        self.get_sprite_coordinates()
+    }
+
+    fn advance_frame(&mut self) {
+        match self.state {
+            AnimationState::Idle | AnimationState::Cooldown => {
+            }
+            AnimationState::Playing { row } => {
+                self.current_frame += 1;
+                if self.current_frame >= TOTAL_FRAMES {
+                    // Animation complete, enter cooldown
+                    self.state = AnimationState::Cooldown;
+                    self.current_frame = 0;
+                    self.last_animation_end = Instant::now();
+                }
+            }
+        }
+    }
+
+    fn maybe_start_animation(&mut self, now: Instant) {
+        // Check if we're in cooldown
+        if matches!(self.state, AnimationState::Cooldown) {
+            let elapsed = now.duration_since(self.last_animation_end);
+            if elapsed < Duration::from_secs(MIN_DELAY_BETWEEN_ANIMATIONS_SECS) {
+                return;
+            }
+            self.state = AnimationState::Idle;
+        }
+
+        if matches!(self.state, AnimationState::Idle) {
+            let mut rng = rand::thread_rng();
+
+            if rng.gen::<f32>() < ANIMATION_TRIGGER_CHANCE {
+                let row = rng.gen_range(1..TOTAL_ROWS);
+                self.state = AnimationState::Playing { row };
+                self.current_frame = 0;
+            }
+        }
+    }
+
+    fn get_sprite_coordinates(&self) -> (u32, u32) {
+        let row = match self.state {
+            AnimationState::Idle | AnimationState::Cooldown => 0,
+            AnimationState::Playing { row } => row,
+        };
+
+        (self.current_frame, row)
+    }
+
+    fn is_playing(&self) -> bool {
+        matches!(self.state, AnimationState::Playing { .. })
+    }
+
+    fn time_until_next_animation(&self) -> Option<Duration> {
+        if matches!(self.state, AnimationState::Cooldown) {
+            let elapsed = Instant::now().duration_since(self.last_animation_end);
+            let required = Duration::from_secs(MIN_DELAY_BETWEEN_ANIMATIONS_SECS);
+            if elapsed < required {
+                return Some(required - elapsed);
+            }
+        }
+        None
+    }
+}
+
 struct ClippyApp {
-    frame: u32,
-    row: u32,
-    last_update: Instant,
-    is_animating: bool,
+    animation: Animation,
     texture: Option<egui::TextureHandle>,
-    img_buffer: image::RgbaImage,
+    sprite_sheet: image::RgbaImage,
 }
 
 impl ClippyApp {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        // Load sprite sheet
         let img_bytes = include_bytes!("../clippy_map.png");
-        let dynamic_img = image::load_from_memory(img_bytes)
-            .expect("Failed to load embedded clippy data");
-        // let img_path = "clippy_map.png";
-        // let dynamic_img = image::open(img_path).expect("Failed to open clippy_map.png");
-        let img_buffer = dynamic_img.to_rgba8();
+        let sprite_sheet = image::load_from_memory(img_bytes)
+            .expect("Failed to load clippy sprite sheet")
+            .to_rgba8();
 
+        Self::setup_transparent_ui(&cc.egui_ctx);
+
+        Self {
+            animation: Animation::new(),
+            texture: None,
+            sprite_sheet,
+        }
+    }
+
+    fn setup_transparent_ui(ctx: &egui::Context) {
         let mut visuals = egui::Visuals::dark();
         visuals.window_fill = egui::Color32::TRANSPARENT;
         visuals.panel_fill = egui::Color32::TRANSPARENT;
-        cc.egui_ctx.set_visuals(visuals);
-
-        Self {
-            frame: 0,
-            row: 0,
-            last_update: Instant::now(),
-            is_animating: false,
-            texture: None,
-            img_buffer,
-        }
-    }
-}
-
-impl eframe::App for ClippyApp {
-    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
-        [0.0, 0.0, 0.0, 0.0]
+        ctx.set_visuals(visuals);
     }
 
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let now = Instant::now();
-        let frame_duration = Duration::from_millis(66);
-
-        if now.duration_since(self.last_update) >= frame_duration {
-            if !self.is_animating {
-                if rand::random::<f32>() < 0.05 {
-                    self.is_animating = true;
-                    self.row = (rand::random::<u32>() % 33) + 1;
-                    self.frame = 0;
-                }
-            } else {
-                self.frame += 1;
-                if self.frame >= TOTAL_FRAMES {
-                    self.is_animating = false;
-                    self.frame = 0;
-                    self.row = 0;
-                }
-            }
-            self.last_update = now;
-        }
-
-        let src_x = self.frame * FRAME_W;
-        let src_y = self.row * FRAME_H;
+    fn extract_frame(&self, frame_x: u32, frame_y: u32) -> egui::ColorImage {
+        let src_x = frame_x * FRAME_W;
+        let src_y = frame_y * FRAME_H;
 
         let sub_img = image::imageops::crop_imm(
-            &self.img_buffer,
-            src_x, src_y,
-            FRAME_W, FRAME_H
-        ).to_image();
+            &self.sprite_sheet,
+            src_x,
+            src_y,
+            FRAME_W,
+            FRAME_H,
+        )
+            .to_image();
 
         let size = [sub_img.width() as usize, sub_img.height() as usize];
         let pixels = sub_img.as_flat_samples();
-        let color_image = egui::ColorImage::from_rgba_unmultiplied(
-            size,
-            pixels.as_slice(),
-        );
+
+        egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice())
+    }
+
+    fn update_texture(&mut self, ctx: &egui::Context, frame_x: u32, frame_y: u32) {
+        let color_image = self.extract_frame(frame_x, frame_y);
 
         self.texture = Some(ctx.load_texture(
             "clippy-frame",
             color_image,
             egui::TextureOptions::NEAREST,
         ));
+    }
+}
 
-        egui::CentralPanel::default().frame(egui::Frame::none()).show(ctx, |ui| {
-            if let Some(texture) = &self.texture {
-                let img_widget = egui::Image::new(texture)
-                    .sense(egui::Sense::drag());
+impl eframe::App for ClippyApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let (frame_x, frame_y) = self.animation.update();
 
-                let response = ui.add(img_widget);
+        self.update_texture(ctx, frame_x, frame_y);
 
-                if response.dragged() {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+        egui::CentralPanel::default()
+            .frame(egui::Frame::none())
+            .show(ctx, |ui| {
+                if let Some(texture) = &self.texture {
+                    let img_widget = egui::Image::new(texture)
+                        .sense(egui::Sense::drag());
+
+                    let response = ui.add(img_widget);
+
+                    if response.dragged() {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+                    }
+
+                    response.context_menu(|ui| {
+                        if let Some(time_left) = self.animation.time_until_next_animation() {
+                            ui.label(format!("Next animation in: {:.1}s", time_left.as_secs_f32()));
+                        } else {
+                            ui.label("Ready for animation");
+                        }
+
+                        ui.separator();
+
+                        if ui.button("Close Clippy").clicked() {
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                        }
+                    });
                 }
-            }
-        });
+            });
 
-        ctx.request_repaint_after(Duration::from_millis(30));
+        // Request repaint
+        let repaint_delay = if self.animation.is_playing() {
+            Duration::from_millis(16)
+        } else {
+            Duration::from_millis(50)
+        };
+
+        ctx.request_repaint_after(repaint_delay);
+    }
+
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        [0.0, 0.0, 0.0, 0.0]
     }
 }
