@@ -212,7 +212,7 @@ impl eframe::App for ClippyApp {
 
                     let response = ui.add(img_widget);
 
-                    if response.dragged() {
+                    if response.drag_started() {
                         ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
                     }
 
