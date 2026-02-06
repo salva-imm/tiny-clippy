@@ -1,32 +1,28 @@
-# 📎 Tiny Clippy
+# Tiny Clippy
 
 ![Tiny Clippy Preview](tiny-clippy-preview.gif)
 
-The legendary Microsoft Office Assistant, reborn in **Rust**.
-Tiny Clippy is a lightweight, cross-platform desktop companion built with **egui**. No bloat, just pure nostalgia and performance.
+A lightweight, cross-platform implementation of the classic Microsoft Office Assistant built with Rust and egui.
 
-## 🚀 Features
-* **The Legend Returns:** The classic assistant you know and love (or hate).
-* **Native Performance:** Built in Rust for minimal resource usage.
-* **Cross-Platform:** Runs natively on Windows, Linux, and macOS (Apple Silicon supported).
+## Features
+* **Native Performance:** Compiled Rust binary with minimal memory footprint.
+* **Cross-Platform:** Native support for Linux (x86_64/ARM64), macOS (Apple Silicon), and Windows.
+* **No Dependencies:** Single-binary execution with no external runtime requirements (except standard graphics libs on Linux).
 
 ---
 
-## 📥 Installation
+## Installation
 
-Download the latest binary for your architecture from the [Releases](https://github.com/salva-imm/tiny-clippy/releases) page.
+Download the binary for your architecture from the [Releases](https://github.com/salva-imm/tiny-clippy/releases) page.
 
-### 🐧 Linux (AMD64 / ARM64)
+### Linux (AMD64 / ARM64)
 ```bash
-# Grant execution permissions
 chmod +x tiny-clippy-linux-amd64
-
-# Run
 ./tiny-clippy-linux-amd64
 ```
 
-### 🍎 macOS (Apple Silicon)
-To bypass the "App is damaged" or "Unidentified Developer" warning:
+### macOS (Apple Silicon)
+To bypass the "App is damaged" or "Unidentified Developer" gatekeeper warning:
 ```bash
 # Remove quarantine attribute
 xattr -cr tiny-clippy-macos-arm64
@@ -37,24 +33,24 @@ chmod +x tiny-clippy-macos-arm64
 # Run
 ./tiny-clippy-macos-arm64
 ```
-> **Pro Tip:** If Gatekeeper still blocks you, **Right-Click** the file and select **Open**.
+*Note: If macOS still prevents execution, Right-Click the file and select Open.*
 
-### 🪟 Windows (AMD64)
+### Windows (AMD64)
 Download `tiny-clippy-windows-amd64.exe` and execute.
 
 ---
 
-## 🛠 Building from Source
+## Building from Source
 
-Ensure you have the Rust toolchain installed.
+Ensure you have a working Rust toolchain installed.
 
 ```bash
-# Clone and build
 git clone [https://github.com/salva-imm/tiny-clippy](https://github.com/salva-imm/tiny-clippy)
 cd tiny-clippy
 cargo build --release
 ```
 
-**Note for Linux:** You may need `libwayland-dev`, `libx11-dev`, and `libxkbcommon-dev` installed to compile the GUI.
+**Linux Build Dependencies:**
+Standard egui requirements apply: `libwayland-dev`, `libx11-dev`, and `libxkbcommon-dev`.
 
 ---
