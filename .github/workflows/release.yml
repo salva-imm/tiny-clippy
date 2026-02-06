@@ -15,22 +15,18 @@ jobs:
     strategy:
       matrix:
         include:
-          # Linux
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact_name: tiny-clippy-linux
-            # Install GTK deps for eframe/egui on Linux
             install_deps: |
               sudo apt-get update
               sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev libgtk-3-dev
 
-          # Windows
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact_name: tiny-clippy-windows.exe
             install_deps: echo "No dependencies needed for Windows"
 
-          # macOS (Apple Silicon M1/M2/M3)
           - os: macos-latest
             target: aarch64-apple-darwin
             artifact_name: tiny-clippy-mac-arm64
@@ -39,21 +35,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 1. Install Dependencies (Linux only)
       - name: Install System Deps
         run: ${{ matrix.install_deps }}
 
-      # 2. Setup Rust
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      # 3. Build (Release Mode)
       - name: Build Binary
         run: cargo build --release --target ${{ matrix.target }}
 
-      # 4. Rename & Move Binary
       - name: Prepare Artifact
         shell: bash
         run: |
@@ -64,7 +56,6 @@ jobs:
             cp target/${{ matrix.target }}/release/tiny-clippy artifacts/${{ matrix.artifact_name }}
           fi
 
-      # 5. Upload Artifact (FORCE V4)
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -75,18 +66,15 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Needed to create the release
+      contents: write
     steps:
-      # 1. Download All Artifacts (FORCE V4)
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      # 2. Debug: List files
       - name: List Artifacts
         run: ls -R artifacts
 
-      # 3. Create Release
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:

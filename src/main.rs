@@ -5,11 +5,10 @@ use std::time::{Duration, Instant};
 // Constants
 const FRAME_W: u32 = 124;
 const FRAME_H: u32 = 93;
-const TOTAL_FRAMES: u32 = 27;
-const TOTAL_ROWS: u32 = 34;
+const FRAMES_PER_ROW: u32 = 27;
 const FRAME_DURATION_MS: u64 = 75;
-const IDLE_CHECK_MS: u64 = 100;
-const MIN_DELAY_BETWEEN_ANIMATIONS_SECS: u64 = 10; // Static delay between animations
+const IDLE_CHECK_MS: u64 = 95;
+const MIN_DELAY_BETWEEN_ANIMATIONS_SECS: u64 = 9;
 const ANIMATION_TRIGGER_CHANCE: f32 = 1.0;
 
 fn main() -> eframe::Result {
@@ -32,15 +31,55 @@ fn main() -> eframe::Result {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+struct AnimationClip {
+    start_frame: u32,
+    end_frame: u32,
+}
+
+impl AnimationClip {
+    fn length(&self) -> u32 {
+        self.end_frame - self.start_frame + 1
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 enum AnimationState {
     Idle,
-    Playing { row: u32 },
+    Playing {
+        clip: AnimationClip,
+        current_linear_frame: u32,
+    },
     Cooldown,
 }
+const ANIMATION_CLIPS: &[(u32, u32)] = &[
+    (0, 20),
+    (20, 62),
+    (63, 86),
+    (86, 135),
+    (135, 194),
+    (194, 217),
+    (217, 233),
+    (233, 249),
+    (249, 267),
+    (267, 306),
+    (306, 343),
+    (343, 359),
+    (359, 416),
+    (416, 434),
+    (434, 497),
+    (512, 535),
+    (535, 554),
+    (554, 613),
+    (613, 698),
+    (698, 717),
+    (718, 735),
+    (735, 790),
+    (790, 821),
+    (822, 885),
+];
 
 struct Animation {
     state: AnimationState,
-    current_frame: u32,
     last_frame_time: Instant,
     last_idle_check: Instant,
     last_animation_end: Instant,
@@ -50,11 +89,16 @@ impl Animation {
     fn new() -> Self {
         Self {
             state: AnimationState::Idle,
-            current_frame: 0,
             last_frame_time: Instant::now(),
             last_idle_check: Instant::now(),
             last_animation_end: Instant::now(),
         }
+    }
+
+    fn linear_to_grid(linear_frame: u32) -> (u32, u32) {
+        let row = linear_frame / FRAMES_PER_ROW;
+        let col = linear_frame % FRAMES_PER_ROW;
+        (col, row)
     }
 
     fn update(&mut self) -> (u32, u32) {
@@ -78,21 +122,29 @@ impl Animation {
     fn advance_frame(&mut self) {
         match self.state {
             AnimationState::Idle | AnimationState::Cooldown => {
+                // Stay at frame 0
             }
-            AnimationState::Playing { row } => {
-                self.current_frame += 1;
-                if self.current_frame >= TOTAL_FRAMES {
-                    // Animation complete, enter cooldown
+            AnimationState::Playing { clip, current_linear_frame } => {
+                let new_frame = current_linear_frame + 1;
+
+                if new_frame > clip.end_frame {
+                    // let start = clip.start_frame;
+                    // let end = clip.end_frame;
+
                     self.state = AnimationState::Cooldown;
-                    self.current_frame = 0;
                     self.last_animation_end = Instant::now();
+                    // println!("Animation complete: {} -> {}", start, end);
+                } else {
+                    self.state = AnimationState::Playing {
+                        clip,
+                        current_linear_frame: new_frame,
+                    };
                 }
             }
         }
     }
 
     fn maybe_start_animation(&mut self, now: Instant) {
-        // Check if we're in cooldown
         if matches!(self.state, AnimationState::Cooldown) {
             let elapsed = now.duration_since(self.last_animation_end);
             if elapsed < Duration::from_secs(MIN_DELAY_BETWEEN_ANIMATIONS_SECS) {
@@ -105,20 +157,38 @@ impl Animation {
             let mut rng = rand::thread_rng();
 
             if rng.gen::<f32>() < ANIMATION_TRIGGER_CHANCE {
-                let row = rng.gen_range(1..TOTAL_ROWS);
-                self.state = AnimationState::Playing { row };
-                self.current_frame = 0;
+                if !ANIMATION_CLIPS.is_empty() {
+                    let clip_index = rng.gen_range(0..ANIMATION_CLIPS.len());
+                    let (start, end) = ANIMATION_CLIPS[clip_index];
+
+                    let clip = AnimationClip {
+                        start_frame: start,
+                        end_frame: end,
+                    };
+
+                    self.state = AnimationState::Playing {
+                        clip,
+                        current_linear_frame: start,
+                    };
+
+                    // let (start_col, start_row) = Self::linear_to_grid(start);
+                    // let (end_col, end_row) = Self::linear_to_grid(end);
+                    // println!(
+                    //     "Starting animation {}: frames {}-{} (row {}:{} to row {}:{})",
+                    //     clip_index, start, end, start_row, start_col, end_row, end_col
+                    // );
+                }
             }
         }
     }
 
     fn get_sprite_coordinates(&self) -> (u32, u32) {
-        let row = match self.state {
-            AnimationState::Idle | AnimationState::Cooldown => 0,
-            AnimationState::Playing { row } => row,
-        };
-
-        (self.current_frame, row)
+        match self.state {
+            AnimationState::Idle | AnimationState::Cooldown => (0, 0),
+            AnimationState::Playing { current_linear_frame, .. } => {
+                Self::linear_to_grid(current_linear_frame)
+            }
+        }
     }
 
     fn is_playing(&self) -> bool {
@@ -135,17 +205,33 @@ impl Animation {
         }
         None
     }
+
+    fn get_current_state_info(&self) -> String {
+        match self.state {
+            AnimationState::Idle => "Idle (0, 0)".to_string(),
+            AnimationState::Cooldown => "Waiting...".to_string(),
+            AnimationState::Playing { clip, current_linear_frame } => {
+                let (col, row) = Self::linear_to_grid(current_linear_frame);
+                let progress = current_linear_frame - clip.start_frame;
+                let total = clip.length();
+                format!(
+                    "Row {}, Frame {} (Linear: {}) - {}/{}",
+                    row, col, current_linear_frame, progress, total
+                )
+            }
+        }
+    }
 }
 
 struct ClippyApp {
     animation: Animation,
     texture: Option<egui::TextureHandle>,
     sprite_sheet: image::RgbaImage,
+    show_debug: bool,
 }
 
 impl ClippyApp {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        // Load sprite sheet
         let img_bytes = include_bytes!("../clippy_map.png");
         let sprite_sheet = image::load_from_memory(img_bytes)
             .expect("Failed to load clippy sprite sheet")
@@ -157,6 +243,7 @@ impl ClippyApp {
             animation: Animation::new(),
             texture: None,
             sprite_sheet,
+            show_debug: false,
         }
     }
 
@@ -200,7 +287,6 @@ impl ClippyApp {
 impl eframe::App for ClippyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let (frame_x, frame_y) = self.animation.update();
-
         self.update_texture(ctx, frame_x, frame_y);
 
         egui::CentralPanel::default()
@@ -217,11 +303,15 @@ impl eframe::App for ClippyApp {
                     }
 
                     response.context_menu(|ui| {
+                        ui.label(self.animation.get_current_state_info());
+
                         if let Some(time_left) = self.animation.time_until_next_animation() {
-                            ui.label(format!("Next animation in: {:.1}s", time_left.as_secs_f32()));
-                        } else {
-                            ui.label("Ready for animation");
+                            ui.label(format!("Next in: {:.1}s", time_left.as_secs_f32()));
                         }
+
+                        ui.separator();
+
+                        ui.checkbox(&mut self.show_debug, "Show debug info");
 
                         ui.separator();
 
@@ -230,9 +320,20 @@ impl eframe::App for ClippyApp {
                         }
                     });
                 }
+
+                if self.show_debug {
+                    egui::Window::new("Debug")
+                        .collapsible(false)
+                        .resizable(false)
+                        .show(ctx, |ui| {
+                            ui.label(self.animation.get_current_state_info());
+                            if let Some(time_left) = self.animation.time_until_next_animation() {
+                                ui.label(format!("Cooldown: {:.1}s", time_left.as_secs_f32()));
+                            }
+                        });
+                }
             });
 
-        // Request repaint
         let repaint_delay = if self.animation.is_playing() {
             Duration::from_millis(16)
         } else {
