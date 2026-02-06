@@ -70,12 +70,30 @@ jobs:
         run: |
           codesign -s - --force --deep --preserve-metadata=entitlements,requirements,flags,runtime target/${{ matrix.target }}/release/${{ matrix.binary_name }}
 
-      - name: Rename & Upload
+      - name: Rename Binary
         shell: bash
         run: |
           cp target/${{ matrix.target }}/release/${{ matrix.binary_name }} ${{ matrix.asset_name }}
 
-      - name: Release
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: ${{ matrix.asset_name }}
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: tiny-clippy-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@v1
         with:
-          files: ${{ matrix.asset_name }}
+          files: dist/*
