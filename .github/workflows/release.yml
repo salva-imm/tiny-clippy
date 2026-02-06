@@ -3,86 +3,74 @@ name: Build & Release
 on:
   push:
     tags:
-      - 'v*' # Trigger on tags like v1.0.0
+      - "v*"
 
-env:
-  CARGO_TERM_COLOR: always
+permissions:
+  contents: write
 
 jobs:
   build:
-    name: Build ${{ matrix.os }}
+    name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            artifact_name: tiny-clippy-linux
-            install_deps: |
-              sudo apt-get update
-              sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev libgtk-3-dev
-
+          # Windows x64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact_name: tiny-clippy-windows.exe
-            install_deps: echo "No dependencies needed for Windows"
+            binary_name: tiny-clippy.exe
+            use_cross: false
 
+          # MacOS ARM64 (Apple Silicon)
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact_name: tiny-clippy-mac-arm64
-            install_deps: echo "No dependencies needed for macOS"
+            binary_name: tiny-clippy
+            use_cross: false
+
+          # Linux x64
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            binary_name: tiny-clippy
+            use_cross: false
+
+          # Linux ARM64 (NEW!)
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            binary_name: tiny-clippy
+            use_cross: true
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install System Deps
-        run: ${{ matrix.install_deps }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      - name: Build Binary
-        run: cargo build --release --target ${{ matrix.target }}
+      - name: Install Cross
+        if: matrix.use_cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
 
-      - name: Prepare Artifact
-        shell: bash
+      - name: Build
         run: |
-          mkdir -p artifacts
-          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            cp target/${{ matrix.target }}/release/tiny-clippy.exe artifacts/${{ matrix.artifact_name }}
+          if [ "${{ matrix.use_cross }}" = "true" ]; then
+            cross build --release --target ${{ matrix.target }}
           else
-            cp target/${{ matrix.target }}/release/tiny-clippy artifacts/${{ matrix.artifact_name }}
+            cargo build --release --target ${{ matrix.target }}
           fi
 
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact_name }}
-          path: artifacts/${{ matrix.artifact_name }}
+      - name: Sign Binary (Mac Only)
+        if: matrix.os == 'macos-latest'
+        run: |
+          codesign -s - --force --deep --preserve-metadata=entitlements,requirements,flags,runtime target/${{ matrix.target }}/release/${{ matrix.binary_name }}
 
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
+      - name: Rename & Upload
+        shell: bash
+        run: |
+          cp target/${{ matrix.target }}/release/${{ matrix.binary_name }} ${{ matrix.binary_name }}-${{ matrix.target }}
 
-      - name: List Artifacts
-        run: ls -R artifacts
-
-      - name: Create GitHub Release
+      - name: Release
         uses: softprops/action-gh-release@v1
         with:
-          files: |
-            artifacts/tiny-clippy-linux/tiny-clippy-linux
-            artifacts/tiny-clippy-windows.exe/tiny-clippy-windows.exe
-            artifacts/tiny-clippy-mac-arm64/tiny-clippy-mac-arm64
-          draft: true
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          files: ${{ matrix.binary_name }}-${{ matrix.target }}
